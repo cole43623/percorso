@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gioco del Percorso Ottimale</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 900px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .info {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #666;
+        }
+
+        .level {
+            font-weight: bold;
+            color: #764ba2;
+            font-size: 1.2em;
+        }
+
+        canvas {
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            display: block;
+            margin: 0 auto;
+            cursor: pointer;
+            background: #f8f9fa;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .message {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .instructions h3 {
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .instructions p {
+            color: #555;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <h1>🎯 Percorso Ottimale</h1>
+        <div class="info">
+            <span class="level">Livello: <span id="level">1</span></span> | 
+            <span>Punteggio: <span id="score">0</span></span>
+        </div>
+        
+        <div class="instructions">
+            <h3>Come si gioca:</h3>
+            <p>Trova il percorso con il <strong>costo minimo</strong> dal nodo START al nodo END. Clicca sui collegamenti per selezionare il tuo percorso!</p>
+        </div>
+
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        
+        <div class="controls">
+            <button class="btn-primary" id="checkBtn">✓ Verifica Percorso</button>
+            <button class="btn-secondary" id="resetBtn">↻ Resetta</button>
+            <button class="btn-secondary" id="hintBtn">💡 Suggerimento</button>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const container = document.getElementById('container');
+        const ctx = canvas.getContext('2d');
+        const messageDiv = document.getElementById('message');
+        const levelSpan = document.getElementById('level');
+        const scoreSpan = document.getElementById('score');
+
+        let level = 1;
+        let score = 0;
+        let nodes = [];
+        let edges = [];
+        let selectedEdges = [];
+        let optimalPath = [];
+        let startNode, endNode;
+
+        class Node {
+            constructor(id, x, y) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.radius = 25;
+            }
+
+            draw(isSpecial = false) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                if (this.id === 'START') {
+                    ctx.fillStyle = '#4caf50';
+                } else if (this.id === 'END') {
+                    ctx.fillStyle = '#f44336';
+                } else {
+                    ctx.fillStyle = isSpecial ? '#ffc107' : '#667eea';
+                }
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.id, this.x, this.y);
+            }
+        }
+
+        class Edge {
+            constructor(from, to, cost) {
+                this.from = from;
+                this.to = to;
+                this.cost = cost;
+                this.selected = false;
+            }
+
+            draw() {
+                const fromNode = nodes.find(n => n.id === this.from);
+                const toNode = nodes.find(n => n.id === this.to);
+
+                ctx.beginPath();
+                ctx.moveTo(fromNode.x, fromNode.y);
+                ctx.lineTo(toNode.x, toNode.y);
+                ctx.strokeStyle = this.selected ? '#ff5722' : '#999';
+                ctx.lineWidth = this.selected ? 4 : 2;
+                ctx.stroke();
+
+                const labelPos = this.getLabelPosition();
+
+                ctx.beginPath();
+                ctx.arc(labelPos.x, labelPos.y, 18, 0, Math.PI * 2);
+                ctx.fillStyle = this.selected ? '#ff5722' : 'white';
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = this.selected ? 'white' : '#333';
+                ctx.font = 'bold 13px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.cost, labelPos.x, labelPos.y);
+            }
+
+            getLabelPosition() {
+                const fromNode = nodes.find(n => n.id === this.from);
+                const toNode = nodes.find(n => n.id === this.to);
+                
+                const midX = (fromNode.x + toNode.x) / 2;
+                const midY = (fromNode.y + toNode.y) / 2;
+                
+                const dx = toNode.x - fromNode.x;
+                const dy = toNode.y - fromNode.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                
+                const perpX = -dy / len;
+                const perpY = dx / len;
+                
+                const offset = 25;
+                
+                const edgeId = this.from + this.to;
+                const hash = edgeId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const direction = (hash % 2) * 2 - 1; // -1 o 1
+                
+                return {
+                    x: midX + perpX * offset * direction,
+                    y: midY + perpY * offset * direction
+                };
+            }
+
+            isClicked(x, y) {
+                const labelPos = this.getLabelPosition();
+                const dist = Math.sqrt((x - labelPos.x) ** 2 + (y - labelPos.y) ** 2);
+                return dist < 20;
+            }
+        }
+
+        function generateGraph() {
+            nodes = [];
+            edges = [];
+            selectedEdges = [];
+            
+            const numNodes = 3 + level;
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+            
+            const cols = Math.ceil((numNodes - 2) / 2);
+            const totalWidth = 200 + cols * 200 + 200; 
+            const neededWidth = Math.max(800, totalWidth + 100);
+            
+            if (canvas.width < neededWidth) {
+                canvas.width = neededWidth;
+                container.style.width = (canvas.width + 100) + "px";
+            }
+            
+            nodes.push(new Node('START', 100, 250));
+            
+            for (let i = 0; i < numNodes - 2; i++) {
+                const col = Math.floor(i / 2);
+                const row = i % 2;
+                const x = 250 + col * 200;
+                const y = 150 + row * 200;
+                nodes.push(new Node(letters[i], x, y));
+            }
+            
+            const endX = 250 + cols * 200 + 150;
+            nodes.push(new Node('END', endX, 250));
+            endNode = nodes[nodes.length - 1];
+            startNode = nodes[0];
+
+            for (let i = 0; i < nodes.length - 1; i++) {
+                const connectTo = Math.min(i + 1 + Math.floor(Math.random() * 2), nodes.length - 1);
+                const cost = Math.floor(Math.random() * 20) + 5;
+                edges.push(new Edge(nodes[i].id, nodes[connectTo].id, cost));
+                
+                if (Math.random() > 0.4 && connectTo < nodes.length - 1) {
+                    const altConnect = Math.min(connectTo + 1, nodes.length - 1);
+                    const altCost = Math.floor(Math.random() * 20) + 5;
+                    edges.push(new Edge(nodes[i].id, nodes[altConnect].id, altCost));
+                }
+            }
+
+            calculateOptimalPath();
+            draw();
+        }
+
+        function calculateOptimalPath() {
+            const graph = {};
+            nodes.forEach(n => graph[n.id] = []);
+            edges.forEach(e => graph[e.from].push({to: e.to, cost: e.cost, edge: e}));
+
+            const distances = {};
+            const previous = {};
+            const unvisited = new Set(nodes.map(n => n.id));
+
+            nodes.forEach(n => distances[n.id] = Infinity);
+            distances['START'] = 0;
+
+            while (unvisited.size > 0) {
+                let current = null;
+                let minDist = Infinity;
+                unvisited.forEach(id => {
+                    if (distances[id] < minDist) {
+                        minDist = distances[id];
+                        current = id;
+                    }
+                });
+
+                if (current === null || current === 'END') break;
+                unvisited.delete(current);
+
+                graph[current].forEach(neighbor => {
+                    const alt = distances[current] + neighbor.cost;
+                    if (alt < distances[neighbor.to]) {
+                        distances[neighbor.to] = alt;
+                        previous[neighbor.to] = {from: current, edge: neighbor.edge};
+                    }
+                });
+            }
+
+            optimalPath = [];
+            let curr = 'END';
+            while (previous[curr]) {
+                optimalPath.unshift(previous[curr].edge);
+                curr = previous[curr].from;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            edges.forEach(e => e.draw());
+            nodes.forEach(n => n.draw());
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            edges.forEach(edge => {
+                if (edge.isClicked(x, y)) {
+                    edge.selected = !edge.selected;
+                    draw();
+                }
+            });
+        });
+
+        document.getElementById('checkBtn').addEventListener('click', () => {
+            const selected = edges.filter(e => e.selected);
+            
+            if (selected.length === 0) {
+                showMessage('Seleziona almeno un percorso!', 'error');
+                return;
+            }
+
+            const selectedCost = selected.reduce((sum, e) => sum + e.cost, 0);
+            const optimalCost = optimalPath.reduce((sum, e) => sum + e.cost, 0);
+
+            if (selectedCost === optimalCost && isValidPath(selected)) {
+                score += level * 10;
+                scoreSpan.textContent = score;
+                showMessage(`🎉 Perfetto! Costo: ${selectedCost}. Prossimo livello!`, 'success');
+                setTimeout(() => {
+                    level++;
+                    levelSpan.textContent = level;
+                    generateGraph();
+                    messageDiv.innerHTML = '';
+                }, 2000);
+            } else {
+                showMessage(`❌ Non è il percorso ottimale. Costo selezionato: ${selectedCost}, Ottimale: ${optimalCost}`, 'error');
+            }
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            edges.forEach(e => e.selected = false);
+            draw();
+            messageDiv.innerHTML = '';
+        });
+
+        document.getElementById('hintBtn').addEventListener('click', () => {
+            if (optimalPath.length > 0) {
+                optimalPath[0].selected = true;
+                draw();
+                showMessage('💡 Primo passo evidenziato!', 'success');
+            }
+        });
+
+        function isValidPath(selected) {
+            if (selected.length === 0) return false;
+            
+            let current = 'START';
+            const usedEdges = [...selected];
+            
+            while (current !== 'END' && usedEdges.length > 0) {
+                const nextEdge = usedEdges.find(e => e.from === current);
+                if (!nextEdge) return false;
+                current = nextEdge.to;
+                usedEdges.splice(usedEdges.indexOf(nextEdge), 1);
+            }
+            
+            return current === 'END' && usedEdges.length === 0;
+        }
+
+        function showMessage(text, type) {
+            messageDiv.textContent = text;
+            messageDiv.className = `message ${type}`;
+        }
+
+        generateGraph();
+    </script>
+</body>
+</html>
