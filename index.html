@@ -15,10 +15,8 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             padding: 20px;
+            overflow-x: auto;
         }
 
         .container {
@@ -27,6 +25,7 @@
             padding: 30px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             width: 900px;
+            margin: 20px auto;
         }
 
         h1 {
@@ -171,6 +170,7 @@
         let selectedEdges = [];
         let optimalPath = [];
         let startNode, endNode;
+        let flag = 1;
 
         class Node {
             constructor(id, x, y) {
@@ -257,7 +257,7 @@
                 
                 const edgeId = this.from + this.to;
                 const hash = edgeId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                const direction = (hash % 2) * 2 - 1; // -1 o 1
+                const direction = (hash % 2) * 2 - 1;
                 
                 return {
                     x: midX + perpX * offset * direction,
@@ -278,16 +278,14 @@
             selectedEdges = [];
             
             const numNodes = 3 + level;
-            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
             
             const cols = Math.ceil((numNodes - 2) / 2);
             const totalWidth = 200 + cols * 200 + 200; 
             const neededWidth = Math.max(800, totalWidth + 100);
             
-            if (canvas.width < neededWidth) {
-                canvas.width = neededWidth;
-                container.style.width = (canvas.width + 100) + "px";
-            }
+            canvas.width = neededWidth;
+            container.style.width = (canvas.width + 100) + "px";
             
             nodes.push(new Node('START', 100, 250));
             
@@ -369,6 +367,7 @@
         }
 
         canvas.addEventListener('click', (e) => {
+            if (!flag) return;
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
@@ -392,7 +391,8 @@
             const selectedCost = selected.reduce((sum, e) => sum + e.cost, 0);
             const optimalCost = optimalPath.reduce((sum, e) => sum + e.cost, 0);
 
-            if (selectedCost === optimalCost && isValidPath(selected)) {
+            if (selectedCost === optimalCost && isValidPath(selected) && flag) {
+                flag = 0;
                 score += level * 10;
                 scoreSpan.textContent = score;
                 showMessage(`🎉 Perfetto! Costo: ${selectedCost}. Prossimo livello!`, 'success');
@@ -401,8 +401,9 @@
                     levelSpan.textContent = level;
                     generateGraph();
                     messageDiv.innerHTML = '';
+                    flag = 1;
                 }, 2000);
-            } else {
+            } else if (flag) {
                 showMessage(`❌ Non è il percorso ottimale. Costo selezionato: ${selectedCost}, Ottimale: ${optimalCost}`, 'error');
             }
         });
